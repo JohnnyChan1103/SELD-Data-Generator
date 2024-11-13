@@ -1,0 +1,8 @@
+Floor materials,125 Hz,250 Hz,500 Hz,1 kHz,2 kHz,4 kHz
+Carpet,0.01,0.02,0.06,0.15,0.25,0.45
+"Concrete (unpainted, rough finish)",0.01,0.02,0.04,0.06,0.08,0.1
+Concrete (sealed or painted),0.01,0.01,0.02,0.02,0.02,0.02
+Marble or glazed tile,0.01,0.01,0.01,0.01,0.02,0.02
+Vinyl tile or linoleum on concrete,0.02,0.03,0.03,0.03,0.03,0.02
+Wood parquet on concrete,0.04,0.04,0.07,0.06,0.06,0.07
+Wood flooring on joists,0.15,0.11,0.1,0.07,0.06,0.07

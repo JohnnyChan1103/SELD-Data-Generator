@@ -1,10 +1,10 @@
-import json
 import os, warnings
 
 import numpy as np
+import scipy.special as scyspecial
 import scipy.signal as scysignal
 from itertools import product
-
+from .ambisonics import Ambisonics as amb
 import utils
 
 
@@ -12,11 +12,13 @@ class GenerateSRIR():
     """Spatial Room Impulse Response (SRIR) Generation"""
         
     def __init__(
-        self, fs=24000., src_dir='omni', mic_dir='omni', radius=0.042, 
-        c=343., mic_pos=None, tools='pyroomacoustics'):
+        self, SH_order=1, fs=24000., src_dir='omni', mic_dir='omni', radius=0.042, 
+        c=343., mic_pos=None, tools='pyroomacoustics', array_type='open'):
         """
         Parameters
         ----------
+        SH_order : int, optional
+            Order of sphercial harmony, by default 1
         fs : int, optional
             Sampling rate, by default 24000
         src_dir : str, optional
@@ -25,46 +27,55 @@ class GenerateSRIR():
             Directivity of microphones, by default 'omni'
         radius : float, optional
             Radius of spherical array, by default 0.042
-        mic_pos : _type_, optional
-            Spherical coordinate position of microphones in degree, 
+        c : float, optional
+            Speed of sound, by default 343.
+        mic_pos : (num_mic, 2), array_like, optional
+            Spherical coordinate position (azimuth, elevation) of microphones in degree, 
             by default None
+        array_type : str, {'open', 'rigid'}, optional
+            Type of micophone array, by default 'open'
 
         """        
 
         self.fs = fs
         self.src_dir = src_dir
         self.mic_dir = mic_dir
+        self.array_type = array_type
+        self.SH_order = SH_order
         self.radius = radius
         self.c = c
 
-        assert tools in ['pyroomacoustics', 'gpuRIR', 'smir'], \
-            "tools must be one of 'pyroomacoustics', 'gpuRIR', 'smir'"
+        assert tools in ['pyroomacoustics', 'gpuRIR', 'smir', 'pygsound', 'collectedRIR'], \
+            "tools must be one of 'pyroomacoustics', 'gpuRIR', 'smir', 'pygsound, 'meshGWA'"
         self.tools = tools
         self.rir = None # (num_mic, num_src, num_points)
 
         if mic_pos is None:
-            raise ValueError('mic_pos must be given.')
+            if SH_order is None:
+                raise ValueError("One of mic_pos and SH_order must be specified.")
+            else:
+                if SH_order == 1:
+                    self.mic_pos_sph = np.array([[45, 35], [-45, -35], 
+                                                 [135, -35], [-135, 35]])
+                    self.mic_pos_cart = utils.sph2cart(
+                        self.mic_pos_sph[:,0], self.mic_pos_sph[:,1], radius)
+                else:
+                    raise NotImplementedError("Only SH_order=1 is supported.")
         else:
             self.mic_pos_cart = utils.sph2cart(mic_pos[:,0], mic_pos[:,1], radius)
             self.mic_pos_sph = mic_pos
 
 
-    def compute_srir(
-        self, room_dim, src_pos, rt60, 
-        mic_pos_center=None, method='ism', 
-        **kwargs):
+    def compute_srir(self, room_dim, src_pos, rt60, mic_pos_center=None, method='ism', **kwargs):
         if self.tools == 'pyroomacoustics':
             self.compute_srir_pra(room_dim, src_pos, rt60, mic_pos_center, method, **kwargs)
         elif self.tools == 'gpuRIR':
             self.compute_srir_gpuRIR(room_dim, src_pos, rt60, mic_pos_center, **kwargs)
-        elif self.tools == 'smir':
-            self.compute_srir_smir(room_dim, src_pos, rt60, mic_pos_center, **kwargs)
+        else: raise NotImplementedError("Only pyroomacoustics and gpuRIR are supported.")
      
 
     def compute_srir_pra(
-        self, room_dim, src_pos, rt60=None, 
-        mic_pos_center=None, method='hybrid', 
-        **kwargs):
+        self, room_dim, src_pos, rt60=None, mic_pos_center=None, method='hybrid', **kwargs):
         """Compute an SRIR from a given room parameters
             using pyroomacoustics.
 
@@ -87,7 +98,7 @@ class GenerateSRIR():
 
         Returns
         -------
-        array_like, shape (num_src, num_mic, length)
+        array_like, shape (num_mic, num_src, length)
             Generated SRIR.
         """        
 
@@ -101,6 +112,7 @@ class GenerateSRIR():
         if rt60 is not None:
             # We invert Sabine's formula to obtain the parameters for the ISM simulator
             e_absorption, max_order = pra.inverse_sabine(rt60, room_dim)
+            max_order = min(max_order, 50)
             if method == "ism":
                 room = pra.ShoeBox(
                     p=room_dim, 
@@ -112,32 +124,33 @@ class GenerateSRIR():
                     p=room_dim,
                     fs=self.fs,
                     materials=pra.Material(e_absorption),
-                    max_order=3,
+                    max_order=max_order,
                     ray_tracing=True,
                     air_absorption=True,)
         else:
+            enable = method == 'hybrid'
             room = pra.ShoeBox(
-            p=room_dim, fs=self.fs, **kwargs)
-            if method == 'hybrid':
-                room.set_ray_tracing(True)
-                # room.set_air_absorption(True)
+            p=room_dim, fs=self.fs, 
+            ray_tracing=enable, 
+            air_absorption=enable, 
+            **kwargs)
         
         for pos in src_pos:
             room.add_source(pos)
         room.add_microphone_array(mic_pos)
-        room.compute_rir()
+        try:
+            room.compute_rir()
+        except:
+            print(rt60, room_dim, src_pos, mic_pos_center, method, kwargs)
+            raise ValueError('RIR computation failed.')
 
         self.c = room.c
         self.rir = room.rir
 
 
     def compute_srir_gpuRIR( 
-        self, room_dim, src_pos, rt60, 
-        mic_pos_center=None, 
-        abs_weights = [0.9]*5+[0.5], 
-        att_diff = 15.0, 
-        att_max = 60.0,
-        **kwargs):
+        self, room_dim, src_pos, rt60, mic_pos_center=None, abs_weights=[0.9]*5+[0.5], 
+        att_diff=15.0, att_max=60.0, **kwargs):
         """Compute an SRIR from a given room parameters
             using gpuRIR
 
@@ -164,7 +177,7 @@ class GenerateSRIR():
 
         Returns
         -------
-        array_like, shape (num_src, num_mic, length)
+        array_like, shape (num_mic, num_src, length)
             Generated SRIR.
         """        
         
@@ -185,68 +198,62 @@ class GenerateSRIR():
             room_dim, beta, src_pos, mic_pos, nb_img, 
             Tmax, self.fs, Tdiff=Tdiff, **kwargs)
         self.rir = np.transpose(rir, (1, 0, 2))
-    
 
-    def compute_srir_smir(
-        self, room_dim, src_pos, rt60, SH_order=1,
-        mic_pos_center=None, order=10,  K=1., 
-        matlab_dir='./SMIR-Generator'):
-        
-        """Compute an SRIR from a given room parameters
-            using SMIR-Generator.
+
+    def simulate_rigid_sph_array(self, src_pos_mic, n_points, order=30):
+        """Rigid spherical array response simulation.
 
         Parameters
         ----------
-        room_dim : (3,) array_like
-            Room dimensions in meters
         src_pos : (num_src, 3) array_like
             Source positions in meters
-        rt60 : float,
-            Desired RT60 in seconds
+        n_points : int
+            Points of filter.
         order : int, optional
-            Reflection order, by default 10
-        mic_pos_center : (3,) array_like, optional
-            Position of center of microphone array, 
-            The default None, which means the center of room.
-        K : float, optional
-            Oversampling factor
-        SH_order : int, optional
-            Spherical harmonic order, by default 1
-        matlab_dir : str, optional
-            Path to SMIR-Generator, by default './SMIR-Generator',
-            download URL: https://github.com/ehabets/SMIR-Generator
-            
+            Order of expension term, by default 30
+            The expansion is limited to 30 terms which provide 
+                negligible modeling error up to 20 kHz.
+
         Returns
         -------
-        array_like, shape (num_src, num_mic, length)
-            Generated SRIR.
-        """        
+        h_mic: (num_src, num_mic, n_points) array_like
+            Spherical array response.
+        """
 
-        assert os.path.isdir(matlab_dir), \
-            'SMIR-Generator not found, please download it from https://github.com/ehabets/SMIR-Generator'
-        
+        src_pos_mic = np.asarray(src_pos_mic)
+        c = self.c
 
-        import matlab
-        import matlab.engine
+        # Compute the frequency-dependent part of the microphone responses
+        f = np.linspace(0, self.fs//2, n_points//2+1)
+        kr = 2 * np.pi * f / c * self.radius
 
-        if mic_pos_center is None:
-            mic_pos_center = room_dim / 2
-        mic = self.mic_pos_sph / 180 * np.pi
-        mic[:, 1] = np.pi/2 - mic[:, 1]
-        eng = matlab.engine.start_matlab()
-        eng.cd(matlab_dir)
-        self.rir = []
-        for src in src_pos:
-            rir = eng.smir_generator(
-                self.c, float(self.fs), matlab.double(mic_pos_center.tolist()), matlab.double(src.tolist()), 
-                matlab.double(room_dim.tolist()), float(rt60), 'rigid', self.radius, 
-                matlab.double(mic.tolist()), float(SH_order), 
-                self.fs/2, K, order, nargout=1     
-            )
-            self.rir.append(rir)
-        self.rir = np.transpose(self.rir, (1, 0, 2))
-        eng.quit()
+        b_n = np.zeros((order+1, len(f)), dtype=np.complex128)
+        for n in range(order+1):
+            b_n[n] = amb.mode_strength(n=n, kr=kr, sphere_type=self.array_type)
+        temp = b_n
+        temp[:, -1] = np.real(temp[:, -1])
+        temp = np.concatenate((temp, temp[:,-2:0:-1].conj()), axis=1)
+        b_nt = np.fft.fftshift(np.fft.ifft(temp, axis=1), axes=1).real
 
+        # Compute angular-dependent part of the microphone responses
+        # unit vectors of DOAs and microphones
+        N_doa = len(src_pos_mic)
+        N_mic = len(self.mic_pos_cart)
+        h_mic = np.zeros((n_points, N_mic, N_doa))
+        H_mic = np.zeros((n_points//2+1, N_mic, N_doa), dtype=np.complex128)
+        for i in range(N_doa):
+            cosAngle = np.dot(
+                self.mic_pos_cart / self.radius, 
+                src_pos_mic[i,:] / np.linalg.norm(src_pos_mic[i,:]))
+            P = np.zeros((order+1, N_mic))
+            for n in range(order+1):
+                Pn = scyspecial.lpmv(0, n, cosAngle)
+                P[n, :] = (2*n+1) / (4 * np.pi) * Pn
+            
+            h_mic[:,:,i] = b_nt.T @ P
+            H_mic[:,:,i] = b_n.T @ P
+
+        return h_mic.transpose(2,1,0), H_mic.transpose(2,1,0)
 
 
     def simulate(self, src_pos_mic, src_signals, n_points=2048, **kwargs):
@@ -281,7 +288,13 @@ class GenerateSRIR():
                 premix_signals[s, m, :len(sig) + len(h) - 1] += \
                     scysignal.fftconvolve(h, sig)
 
-        return np.sum(premix_signals, axis=0)
+        if self.array_type == 'open' or self.tools == 'smir':
+            return np.sum(premix_signals, axis=0)
+        elif self.array_type == 'rigid':
+            h_mic, H_mic = self.simulate_rigid_sph_array(src_pos_mic, n_points=n_points)
+            return scysignal.fftconvolve(premix_signals, h_mic, axes=-1).sum(axis=0)
+        else:
+            raise ValueError('Array type not supported.')
             
 
 

@@ -1,0 +1,19 @@
+Reflective wall materials,125 Hz,250 Hz,500 Hz,1 kHz,2 kHz,4 kHz
+Brick (natural),0.03,0.03,0.03,0.04,0.05,0.07
+Brick (painted),0.01,0.01,0.02,0.02,0.02,0.03
+Concrete block (coarse),0.36,0.44,0.31,0.29,0.39,0.25
+Concrete block (painted),0.1,0.05,0.06,0.07,0.09,0.08
+"Concrete (poured, rough finish, unpainted)",0.01,0.02,0.04,0.06,0.08,0.1
+Doors (solid wood panels),0.1,0.07,0.05,0.04,0.04,0.04
+"Glass (1/4″ plate, large pane)",0.18,0.06,0.04,0.03,0.02,0.02
+Glass (small pane),0.04,0.04,0.03,0.03,0.02,0.02
+Plasterboard (12mm (1/2″) paneling on studs),0.29,0.1,0.06,0.05,0.04,0.04
+"Plaster (gypsum or lime, on masonry)",0.01,0.02,0.02,0.03,0.04,0.05
+"Plaster (gypsum or lime, on wood lath)",0.14,0.1,0.06,0.05,0.04,0.04
+Plywood (3mm(1/8″) paneling over 31.7mm(1-1/4″) airspace),0.15,0.25,0.12,0.08,0.08,0.08
+Plywood (3mm(1/8″) paneling over 57.1mm( 2-1/4″) airspace),0.28,0.2,0.1,0.1,0.08,0.08
+Plywood (5mm(3/16″) paneling over 50mm(2″) airspace),0.38,0.24,0.17,0.1,0.08,0.05
+"Plywood (5mm(3/16″) panel, 25mm(1″) fiberglass in 50mm(2″) airspace)",0.42,0.36,0.19,0.1,0.08,0.05
+"Plywood (6mm(1/4″) paneling, airspace, light bracing)",0.3,0.25,0.15,0.1,0.1,0.1
+"Plywood (10mm(3/8″) paneling, airspace, light bracing)",0.28,0.22,0.17,0.09,0.1,0.11
+"Plywood (19mm(3/4″) paneling, airspace, light bracing)",0.2,0.18,0.15,0.12,0.1,0.1

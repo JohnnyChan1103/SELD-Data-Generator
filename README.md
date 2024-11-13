@@ -8,7 +8,17 @@ Download FSD50K (sound event samples)): [https://zenodo.org/records/4060432](htt
 
 Download TAU-SRIR DB (spatial room impulse responses, optional)): [https://zenodo.org/records/6408611](https://zenodo.org/records/6408611)
 
-## Quick Start
+The Python version is 3.11.8. 
+
+If you need to generate first-order-ambisonic format signals, please download matlab R2023b and [Matlab Engine](https://ww2.mathworks.cn/help/matlab/matlab-engine-for-python.html) for Python 3.11.8. The corresponding scripts are implemented by Matlab.
+
+Run the following command to install necessary Python packages.
+
+```shell
+pip install -r requirements.txt
+```
+
+# Quick Start
 
 The `database` directory should contain the FSD50K and TAU-SRIR DB datasets:
 

@@ -1,3 +1,7 @@
+import scipy.signal
+from scipy.signal.windows import hann
+scipy.signal.hann = hann
+
 import os
 import sys
 import pickle
@@ -47,7 +51,8 @@ def main(arg):
         data_synth = DataSynthesizer(db_config, params)
         
         data_synth.create_mixtures(scenes='target_classes')
-        # data_synth.create_mixtures(scenes='interf_classes')
+        if params['add_interf']:
+            data_synth.create_mixtures(scenes='interf_classes')
         data_synth.create_metadata(add_interf=params['add_interf'])
 
         data_synth.write_metadata(scenes='target_classes')

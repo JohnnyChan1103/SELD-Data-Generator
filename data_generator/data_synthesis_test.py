@@ -744,12 +744,14 @@ class AudioSynthesizer(object):
             # stack all the RIRs for all heights to make one large trajectory
             print('Stacking same trajectory RIRs')
             lRir = len(rirs[0][0])
+            print(rirs[0][0].shape)
             nCh = len(rirs[0][0][0])
             
             n_traj = np.shape(self._rirdata[room_idx][0][2])[0]
             n_rirs_max = np.max(np.sum(self._rirdata[room_idx][0][3],axis=1))
             
             channel_rirs = np.zeros((lRir, nCh, n_rirs_max, n_traj))
+            print(channel_rirs.shape)
             for ntraj in range(n_traj):
                 nHeights = np.sum(self._rirdata[room_idx][0][3][ntraj,:]>0)
                 
